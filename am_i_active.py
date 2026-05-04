@@ -159,9 +159,9 @@ def get_contributions_for_year(token, username, year):
     }
 
 
-def fetch_all_contributions(token, username, start_year, end_year):
+def fetch_all_contributions(token, username, years):
     years_data = []
-    for year in range(end_year, start_year - 1, -1):
+    for year in years:
         print(f"  {year}...", end=" ", flush=True)
         year_data = get_contributions_for_year(token, username, year)
         print(f"{year_data['total']} contributions")
@@ -260,6 +260,7 @@ def main():
     parser.add_argument("--token", help="GitHub token (default: auto-detect via gh CLI)")
     parser.add_argument("--user", help="GitHub username (default: auto-detect)")
     parser.add_argument("--start-year", type=int, help="Earliest year to include")
+    parser.add_argument("--years", help="Comma-separated list of specific years (e.g. 2022,2025)")
     parser.add_argument("--output", default="contributions.png", help="Output file (default: contributions.png)")
     parser.add_argument("--theme", choices=["dark", "light"], default="dark", help="Color theme (default: dark)")
 
@@ -270,11 +271,16 @@ def main():
     viewer = get_viewer_info(token)
     username = args.user or viewer["login"]
     created_year = int(viewer["createdAt"][:4])
-    start_year = args.start_year or created_year
-    end_year = datetime.date.today().year
 
-    print(f"Fetching contributions for {username} ({start_year}–{end_year})...")
-    years_data = fetch_all_contributions(token, username, start_year, end_year)
+    if args.years:
+        selected_years = sorted([int(y.strip()) for y in args.years.split(",")], reverse=True)
+    else:
+        start_year = args.start_year or created_year
+        end_year = datetime.date.today().year
+        selected_years = list(range(end_year, start_year - 1, -1))
+
+    print(f"Fetching contributions for {username} ({', '.join(str(y) for y in selected_years)})...")
+    years_data = fetch_all_contributions(token, username, selected_years)
 
     if not years_data:
         print("No contribution data found.")

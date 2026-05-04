@@ -37,6 +37,7 @@ This fetches your contribution history from the year you created your GitHub acc
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--theme dark\|light` | Color theme | `dark` |
+| `--years 2022,2025` | Specific years to include (comma-separated) | All years |
 | `--start-year YEAR` | Earliest year to include | Account creation year |
 | `--user USERNAME` | GitHub username to fetch | Authenticated user |
 | `--output FILE` | Output file path | `contributions.png` |
@@ -50,6 +51,9 @@ python3 am_i_active.py --theme light
 
 # Only recent years
 python3 am_i_active.py --start-year 2020
+
+# Only specific years
+python3 am_i_active.py --years 2022,2025
 
 # Someone else's contributions
 python3 am_i_active.py --user octocat
