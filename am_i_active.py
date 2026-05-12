@@ -5,6 +5,7 @@ import argparse
 import datetime
 import subprocess
 import sys
+from io import BytesIO
 
 import requests
 from PIL import Image, ImageDraw, ImageFont
@@ -114,8 +115,36 @@ def graphql_query(token, query, variables=None):
 
 
 def get_viewer_info(token):
-    data = graphql_query(token, "query { viewer { login createdAt } }")
+    data = graphql_query(token, "query { viewer { login createdAt avatarUrl } }")
     return data["viewer"]
+
+
+def get_user_info(token, username):
+    query = """
+    query($username: String!) {
+      user(login: $username) {
+        login
+        avatarUrl
+      }
+    }
+    """
+    data = graphql_query(token, query, {"username": username})
+    if not data.get("user"):
+        return None
+    return data["user"]
+
+
+def download_avatar(url, size=64):
+    avatar_url = f"{url}&s={size}"
+    resp = requests.get(avatar_url, timeout=10)
+    resp.raise_for_status()
+    avatar = Image.open(BytesIO(resp.content)).convert("RGBA")
+    avatar = avatar.resize((size, size), Image.LANCZOS)
+    mask = Image.new("L", (size, size), 0)
+    mask_draw = ImageDraw.Draw(mask)
+    mask_draw.ellipse([0, 0, size - 1, size - 1], fill=255)
+    avatar.putalpha(mask)
+    return avatar
 
 
 def get_contributions_for_year(token, username, year):
@@ -183,7 +212,7 @@ def load_font(size):
     return ImageFont.load_default()
 
 
-def render_contributions(years_data, theme_name, output_path):
+def render_contributions(years_data, theme_name, output_path, username=None, avatar=None):
     theme = THEMES[theme_name]
     bg_color = hex_to_rgb(theme["bg"])
     text_color = hex_to_rgb(theme["text"])
@@ -191,6 +220,7 @@ def render_contributions(years_data, theme_name, output_path):
 
     title_font = load_font(16 * SCALE)
     month_font = load_font(13 * SCALE)
+    header_font = load_font(26 * SCALE)
 
     padding_x = 20 * SCALE
     padding_top = 15 * SCALE
@@ -202,10 +232,14 @@ def render_contributions(years_data, theme_name, output_path):
     year_block_height = title_height + gap_after_title + month_label_height + gap_after_months + GRID_HEIGHT
     gap_between_years = 28 * SCALE
 
+    avatar_size = 40 * SCALE
+    header_height = avatar_size + 16 * SCALE if avatar else 0
+
     num_years = len(years_data)
     img_width = padding_x + GRID_WIDTH + padding_x
     img_height = (
         padding_top
+        + header_height
         + num_years * year_block_height
         + (num_years - 1) * gap_between_years
         + padding_bottom
@@ -214,8 +248,20 @@ def render_contributions(years_data, theme_name, output_path):
     img = Image.new("RGB", (img_width, img_height), bg_color)
     draw = ImageDraw.Draw(img)
 
+    if avatar and username:
+        scaled_avatar = avatar.resize((avatar_size, avatar_size), Image.LANCZOS)
+        avatar_y = padding_top
+        img.paste(scaled_avatar, (padding_x, avatar_y), scaled_avatar)
+        text_x = padding_x + avatar_size + 10 * SCALE
+        bbox = header_font.getbbox(username)
+        text_h = bbox[3] - bbox[1]
+        text_y = avatar_y + (avatar_size - text_h) // 2
+        header_colors = {"dark": "#e6edf3", "light": "#1f2328"}
+        header_color = hex_to_rgb(header_colors[theme_name])
+        draw.text((text_x, text_y), username, fill=header_color, font=header_font)
+
     for i, year_data in enumerate(years_data):
-        y_base = padding_top + i * (year_block_height + gap_between_years)
+        y_base = padding_top + header_height + i * (year_block_height + gap_between_years)
 
         year = year_data["year"]
         total = year_data["total"]
@@ -272,6 +318,15 @@ def main():
     username = args.user or viewer["login"]
     created_year = int(viewer["createdAt"][:4])
 
+    if args.user and args.user != viewer["login"]:
+        user_info = get_user_info(token, args.user)
+        avatar_url = user_info["avatarUrl"] if user_info else viewer["avatarUrl"]
+    else:
+        avatar_url = viewer["avatarUrl"]
+
+    print("Downloading avatar...")
+    avatar = download_avatar(avatar_url, size=64 * SCALE)
+
     if args.years:
         selected_years = sorted([int(y.strip()) for y in args.years.split(",")], reverse=True)
     else:
@@ -287,7 +342,7 @@ def main():
         sys.exit(1)
 
     print(f"Rendering {len(years_data)} years...")
-    render_contributions(years_data, args.theme, args.output)
+    render_contributions(years_data, args.theme, args.output, username=username, avatar=avatar)
     print(f"Saved to {args.output}")
 
 
