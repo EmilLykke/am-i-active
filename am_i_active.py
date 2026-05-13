@@ -125,6 +125,7 @@ def get_user_info(token, username):
       user(login: $username) {
         login
         avatarUrl
+        createdAt
       }
     }
     """
@@ -320,7 +321,11 @@ def main():
 
     if args.user and args.user != viewer["login"]:
         user_info = get_user_info(token, args.user)
-        avatar_url = user_info["avatarUrl"] if user_info else viewer["avatarUrl"]
+        if user_info:
+            avatar_url = user_info["avatarUrl"]
+            created_year = int(user_info["createdAt"][:4])
+        else:
+            avatar_url = viewer["avatarUrl"]
     else:
         avatar_url = viewer["avatarUrl"]
 
